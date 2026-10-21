@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# Local tooling / caches
+.mimocode/
+.accelerate/
+.pytest_cache/
+
+# Native decoder package (optional; code falls back to Pillow without it)
+libjpeg-turbo/
+
+# Photos and samples (not part of the app)
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.tif
+*.tiff
+*.gif
+test/
