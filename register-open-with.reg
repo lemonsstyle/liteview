@@ -1,0 +1,37 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Classes\liteview]
+@="liteview image viewer"
+
+[HKEY_CURRENT_USER\Software\Classes\liteview\DefaultIcon]
+@="imageres.dll,-70"
+
+[HKEY_CURRENT_USER\Software\Classes\liteview\shell\open\command]
+@="\"F:\\p_d\\run.bat\" \"%1\""
+
+[HKEY_CURRENT_USER\Software\Classes\.jpg\OpenWithProgids]
+"liteview"=hex(0):
+
+[HKEY_CURRENT_USER\Software\Classes\.jpeg\OpenWithProgids]
+"liteview"=hex(0):
+
+[HKEY_CURRENT_USER\Software\Classes\.jpe\OpenWithProgids]
+"liteview"=hex(0):
+
+[HKEY_CURRENT_USER\Software\Classes\.png\OpenWithProgids]
+"liteview"=hex(0):
+
+[HKEY_CURRENT_USER\Software\Classes\.bmp\OpenWithProgids]
+"liteview"=hex(0):
+
+[HKEY_CURRENT_USER\Software\Classes\.gif\OpenWithProgids]
+"liteview"=hex(0):
+
+[HKEY_CURRENT_USER\Software\Classes\.webp\OpenWithProgids]
+"liteview"=hex(0):
+
+[HKEY_CURRENT_USER\Software\Classes\.tif\OpenWithProgids]
+"liteview"=hex(0):
+
+[HKEY_CURRENT_USER\Software\Classes\.tiff\OpenWithProgids]
+"liteview"=hex(0):

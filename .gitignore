@@ -12,6 +12,9 @@ __pycache__/
 # Native decoder package (optional; code falls back to Pillow without it)
 libjpeg-turbo/
 
+# Built portable package
+dist/
+
 # Photos and samples (not part of the app)
 *.jpg
 *.jpeg

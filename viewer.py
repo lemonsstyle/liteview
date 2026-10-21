@@ -259,6 +259,22 @@ def _native_size(path: Path) -> tuple[int, int]:
         return img.size
 
 
+def _pick_decode_den(nw: int, nh: int, view_w: int, view_h: int) -> int:
+    """Choose JPEG IDCT scale 1/den so the result still fills the window.
+
+    den=1 means full resolution. Small/medium photos are never downsampled
+    below window size — only very large ones use 1/2 or 1/4.
+    """
+    if nw <= 0 or nh <= 0:
+        return 1
+    need = int(max(view_w, view_h, 1) * 1.5)  # slight zoom headroom
+    long_side = max(nw, nh)
+    for den in (8, 4, 2, 1):
+        if long_side / den >= need:
+            return den
+    return 1
+
+
 def _decode_sized(path: Path, den: int = 4) -> tuple[int, int, bytes, tuple[int, int]]:
     """One-shot decode at 1/den scale (libjpeg IDCT scaling).
 
@@ -266,6 +282,10 @@ def _decode_sized(path: Path, den: int = 4) -> tuple[int, int, bytes, tuple[int,
     """
     nw, nh = _native_size(path)
     den = max(1, min(8, den))
+    if den == 1:
+        # Full-res path still uses the same return shape; mips are built
+        # separately by the caller when needed.
+        pass
     if _TURBO is not None and path.suffix.lower() in {".jpg", ".jpeg"}:
         raw = path.read_bytes()
         arr = _TURBO.decode(raw, pixel_format=_TJPF_RGB, scaling_factor=(1, den))
@@ -273,7 +293,8 @@ def _decode_sized(path: Path, den: int = 4) -> tuple[int, int, bytes, tuple[int,
         return nw, nh, arr.tobytes(), (pw, ph)
 
     with Image.open(path) as img:
-        img.draft("RGB", (max(1, nw // den), max(1, nh // den)))
+        if den > 1:
+            img.draft("RGB", (max(1, nw // den), max(1, nh // den)))
         img.load()
         if img.mode != "RGB":
             img = img.convert("RGB")
@@ -316,12 +337,19 @@ class Prefetcher:
         self._seq = 0
         self._inflight: dict[str, threading.Event] = {}
         self._queued: set[str] = set()
+        # Display size used to pick decode resolution (updated by Viewer).
+        self.view_w = 1200
+        self.view_h = 800
         self._threads = [
             threading.Thread(target=self._run, name=f"liteview-prefetch-{i}", daemon=True)
             for i in range(PREFETCH_THREADS)
         ]
         for t in self._threads:
             t.start()
+
+    def set_view_size(self, w: int, h: int) -> None:
+        self.view_w = max(1, w)
+        self.view_h = max(1, h)
 
     def set_direction(self, step: int) -> None:
         if step:
@@ -429,10 +457,16 @@ class Prefetcher:
                         w, h, levels, sizes = _decode_full(path)
                         self.cache.put_prefetched(path, w, h, levels, sizes)
                 else:
-                    # Display-sized decode only (typically 1/4). One pass.
+                    # One pass at a size that still fills the window.
                     if not self.cache.has_raw_or_surface(path):
-                        nw, nh, data, size = _decode_sized(path, den=4)
-                        self.cache.put_preview(path, nw, nh, data, size)
+                        nw, nh = _native_size(path)
+                        den = _pick_decode_den(nw, nh, self.view_w, self.view_h)
+                        if den == 1:
+                            w, h, levels, sizes = _decode_full(path)
+                            self.cache.put_prefetched(path, w, h, levels, sizes)
+                        else:
+                            nw, nh, data, size = _decode_sized(path, den=den)
+                            self.cache.put_preview(path, nw, nh, data, size)
             except Exception:
                 pass
             finally:
@@ -450,6 +484,7 @@ class Viewer:
 
         self.cache = ImageCache()
         self.prefetcher = Prefetcher(self.cache)
+        self.prefetcher.set_view_size(1200, 800)
 
         self.img: pygame.Surface | None = None
         self.mips: list[pygame.Surface] = []
@@ -504,14 +539,22 @@ class Viewer:
             self._status(f"→ {p.name}")
             return False
 
-        # First open: ONE decode at display scale (~1/4). Full res is only
-        # decoded later if the user zooms past what this buffer can show.
+        # First open: ONE decode at a size that fills this window.
+        # Small photos are decoded full-res; only huge ones are scaled down.
         self._status(f"loading {p.name} ...")
         if not keep_current or self.img is None:
             self._draw_status_only()
         try:
-            nw, nh, data, size = _decode_sized(p, den=4)
-            self.cache.put_preview(p, nw, nh, data, size)
+            cw, ch = self.screen.get_size()
+            self.prefetcher.set_view_size(cw, ch)
+            nw, nh = _native_size(p)
+            den = _pick_decode_den(nw, nh, cw, ch)
+            if den == 1:
+                w, h, levels, sizes = _decode_full(p)
+                self.cache.put_prefetched(p, w, h, levels, sizes)
+            else:
+                nw, nh, data, size = _decode_sized(p, den=den)
+                self.cache.put_preview(p, nw, nh, data, size)
         except Exception as exc:  # noqa: BLE001
             self._status(f"open failed: {exc}")
             return False
@@ -813,6 +856,7 @@ class Viewer:
                 if et == pygame.VIDEORESIZE:
                     w, h = max(200, event.w), max(200, event.h)
                     self.screen = pygame.display.set_mode((w, h), RESIZABLE | DOUBLEBUF)
+                    self.prefetcher.set_view_size(w, h)
                     if self.img is not None:
                         self._fit_to_window()
                     self._dirty = True
